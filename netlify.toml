@@ -1,4 +1,4 @@
-// 1. netlify.toml
+# 1. netlify.toml
 [build]
   command = "npm run build"
   publish = "dist"
@@ -15,10 +15,10 @@
     X-XSS-Protection = "1; mode=block"
     Content-Security-Policy = "default-src 'self' https://script.google.com; img-src 'self' data: https://api.netlify.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;"
 
-// 2. Environment Variables (.env.production)
+# 2. .env.production
 VITE_SHEETS_SCRIPT_URL=https://script.google.com/macros/s/AKfycbwn5kOrvRRBvx-7ZhyGj8Bo9XfIQAdHbOsHxuMkHBBx9nRVy6FHEgvflc6IplbSGWl1PA/exec
 
-// 3. Package.json scripts
+# 3. package.json
 {
   "scripts": {
     "dev": "vite",
