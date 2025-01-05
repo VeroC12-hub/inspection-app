@@ -1,5 +1,5 @@
 const SHEETS_CONFIG = {
-    SCRIPT_URL: 'YOUR_GOOGLE_APPS_SCRIPT_URL', // Replace with your URL from Step 3
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwn5kOrvRRBvx-7ZhyGj8Bo9XfIQAdHbOsHxuMkHBBx9nRVy6FHEgvflc6IplbSGWl1PA/exec', // Replace with your URL from Step 3
   };
   
   function submitToGoogleSheets(data) {
