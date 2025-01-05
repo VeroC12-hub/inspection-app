@@ -1,10 +1,12 @@
-import InspectionApp from './InspectionApp'
+import InspectionApp from './InspectionApp'  // Remove the curly braces
+import { Toaster } from './components/ui/toast/toaster'
 
 function App() {
   return (
-    <main className="min-h-screen">
+    <>
       <InspectionApp />
-    </main>
+      <Toaster />
+    </>
   )
 }
 

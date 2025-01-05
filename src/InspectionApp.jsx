@@ -1,28 +1,23 @@
-// src/lib/sheets.js
-export const SHEETS_CONFIG = {
-  SCRIPT_URL: 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL',
-  SPREADSHEET_ID: 'YOUR_SPREADSHEET_ID'
-};
-
-// src/components/ui/toast.jsx (you'll need to create this)
-import { useToast as useToastOriginal } from "@/components/ui/use-toast"
-
-export const useToast = () => {
-  return useToastOriginal();
-};
-
-// src/InspectionApp.jsx (complete updated file)
-import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardContent } from "./components/ui/card";
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
-import { Label } from "./components/ui/label";
-import { Clipboard, Camera, ChevronDown, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Clipboard, Camera, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/toast/use-toast";
 import { SHEETS_CONFIG } from './lib/sheets';
 
+const CONFIG = {
+  COMPANY_LOGO: '/company_logo.png'
+};
+
 const InspectionApp = () => {
+  const [expandedArea, setExpandedArea] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const { toast } = useToast();
+
   const areas = {
     'Area 511 - Raw Material to Silos': {
       'TRAFIC LIGHT': ['CLINKER 1', 'CLINKER 2', 'GYPSUM', 'LIMESTONE'],
@@ -70,6 +65,7 @@ const InspectionApp = () => {
         'CYCLONES',
         'SHENCK'
       ],
+      
       'BIG BAG FILTER_BF03': ['Purging', 'Motor/Gearbox_FN03.M1', 'Screw Conveyor_SC02', 'Rotary Feeder_RF02', 'Divertor Gate_DG01'],
       'ELEVATOR FILTER_BF01': ['Rotary Feeder_RF01', 'Purging', 'Motor/Gearbox_FN01.M1',],
       'SEPARATOR FILTER': ['Rotary Feeder_591 RF01', 'Purging', 'Motor/Gearbox_FN02.M1',]
@@ -86,11 +82,6 @@ const InspectionApp = () => {
       'SILO FLUIDIZATION': ['Lump Crushers', 'Butterfly Valves']
     }
   };
-
-  const [expandedArea, setExpandedArea] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const { toast } = useToast();
 
   const [formData, setFormData] = useState({
     operatorName: '',
@@ -110,33 +101,6 @@ const InspectionApp = () => {
     images: [],
     generalNotes: ''
   });
-
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOffline(false);
-      syncPendingData();
-    };
-    const handleOffline = () => setIsOffline(true);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Load saved form data if any
-    const savedData = localStorage.getItem('currentInspection');
-    if (savedData) {
-      setFormData(JSON.parse(savedData));
-    }
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  // Save form data when it changes
-  useEffect(() => {
-    localStorage.setItem('currentInspection', JSON.stringify(formData));
-  }, [formData]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -190,83 +154,13 @@ const InspectionApp = () => {
     }
   };
 
-  const formatDataForSheets = () => {
-    const timestamp = new Date().toISOString();
-    const inspectionEntries = Object.entries(formData.inspectionData).map(([key, data]) => {
-      const [area, equipment, item] = key.split('-');
-      return {
-        timestamp,
-        operatorName: formData.operatorName,
-        shift: formData.shift,
-        date: formData.date,
-        time: formData.time,
-        area,
-        equipment,
-        item,
-        status: data.status,
-        notes: data.notes,
-        imageUrls: formData.images.map(img => img.data).join(', '),
-        generalNotes: formData.generalNotes
-      };
-    });
-
-    return inspectionEntries;
-  };
-
-  const submitToGoogleSheets = async (data) => {
-    try {
-      const response = await fetch(SHEETS_CONFIG.SCRIPT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'appendInspectionData',
-          spreadsheetId: SHEETS_CONFIG.SPREADSHEET_ID,
-          data: data
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to submit to Google Sheets');
-      
-      const result = await response.json();
-      return result.success;
-    } catch (error) {
-      console.error('Error submitting to Google Sheets:', error);
-      throw error;
-    }
-  };
-
-  const syncPendingData = async () => {
-    const pendingData = JSON.parse(localStorage.getItem('pendingInspections') || '[]');
-    if (pendingData.length === 0) return;
-
-    for (const data of pendingData) {
-      try {
-        const success = await submitToGoogleSheets(data);
-        if (success) {
-          const remaining = pendingData.filter(item => item !== data);
-          localStorage.setItem('pendingInspections', JSON.stringify(remaining));
-          
-          toast({
-            title: "Sync Complete",
-            description: "Offline data has been synchronized",
-            duration: 3000,
-          });
-        }
-      } catch (error) {
-        console.error('Error syncing pending data:', error);
-      }
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-
+  
     try {
       const formattedData = formatDataForSheets();
-
+      
       if (isOffline) {
         const pendingData = JSON.parse(localStorage.getItem('pendingInspections') || '[]');
         pendingData.push(formattedData);
@@ -278,7 +172,7 @@ const InspectionApp = () => {
           duration: 3000,
         });
       } else {
-        const success = await submitToGoogleSheets(formattedData);
+        const success = await window.submitToGoogleSheets(formattedData);
         
         if (success) {
           toast({
@@ -309,10 +203,6 @@ const InspectionApp = () => {
         variant: "destructive",
         duration: 5000,
       });
-      
-      const pendingData = JSON.parse(localStorage.getItem('pendingInspections') || '[]');
-      pendingData.push(formattedData);
-      localStorage.setItem('pendingInspections', JSON.stringify(pendingData));
     } finally {
       setIsSubmitting(false);
     }
@@ -322,10 +212,216 @@ const InspectionApp = () => {
     setExpandedArea(expandedArea === area ? null : area);
   };
 
-  // The JSX render part remains exactly the same as your original code
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      {/* Your existing JSX code remains unchanged */}
+      <Card className="max-w-4xl mx-auto shadow-lg">
+        <CardHeader className="space-y-4 bg-white border-b">
+          <div className="flex justify-center mb-6">
+            {CONFIG.COMPANY_LOGO ? (
+              <img 
+                src={CONFIG.COMPANY_LOGO} 
+                alt="Company Logo" 
+                className="max-h-20 object-contain mb-4"
+              />
+            ) : (
+              <div className="text-center mb-4">
+                <AlertCircle className="h-10 w-10 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-500">No logo configured</p>
+              </div>
+            )}
+          </div>
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-blue-600">CBI PATROLLERS CHECKLIST</h1>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="bg-white p-6 rounded-lg shadow-sm space-y-6">
+              <div>
+                <Label htmlFor="operatorName" className="text-lg font-semibold text-gray-700">
+                  Operator Name
+                </Label>
+                <Input
+                  id="operatorName"
+                  name="operatorName"
+                  value={formData.operatorName}
+                  onChange={handleChange}
+                  required
+                  className="mt-2"
+                />
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="shift" className="text-sm font-medium text-gray-700">
+                    Shift
+                  </Label>
+                  <Select
+                    value={formData.shift}
+                    onValueChange={(value) => setFormData(prev => ({...prev, shift: value}))}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select Shift" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Morning">Morning</SelectItem>
+                      <SelectItem value="Afternoon">Afternoon</SelectItem>
+                      <SelectItem value="Night">Night</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <Label htmlFor="date" className="text-sm font-medium text-gray-700">
+                    Date
+                  </Label>
+                  <Input
+                    type="date"
+                    id="date"
+                    name="date"
+                    value={formData.date}
+                    onChange={handleChange}
+                    required
+                    className="mt-1"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="time" className="text-sm font-medium text-gray-700">
+                    Time
+                  </Label>
+                  <Input
+                    type="time"
+                    id="time"
+                    name="time"
+                    value={formData.time}
+                    onChange={handleChange}
+                    required
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {Object.entries(areas).map(([area, equipment]) => (
+                <div key={area} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => toggleArea(area)}
+                    className="w-full p-4 text-left bg-gray-50 hover:bg-gray-100 flex justify-between items-center transition-colors"
+                  >
+                    <span className="text-lg font-semibold text-gray-800">{area}</span>
+                    {expandedArea === area ? (
+                      <ChevronDown className="w-5 h-5 text-gray-600" />
+                    ) : (
+                      <ChevronRight className="w-5 h-5 text-gray-600" />
+                    )}
+                  </button>
+                  
+                  {expandedArea === area && (
+                    <div className="p-4 space-y-4">
+                      {Object.entries(equipment).map(([equip, items]) => (
+                        <Card key={equip} className="p-4 border-l-4 border-blue-500">
+                          <h3 className="font-semibold text-lg text-gray-800 mb-4">{equip}</h3>
+                          <div className="space-y-4">
+                            {items.map(item => {
+                              const key = `${area}-${equip}-${item}`;
+                              return (
+                                <div key={item} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center bg-gray-50 p-3 rounded-lg">
+                                  <Label className="text-sm font-medium text-gray-700">{item}</Label>
+                                  <Select
+                                    value={formData.inspectionData[key]?.status || ''}
+                                    onValueChange={(value) => handleStatusChange(key, value)}
+                                  >
+                                    <SelectTrigger className="bg-white">
+                                      <SelectValue placeholder="Select status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="OK" className="text-green-600">OK</SelectItem>
+                                      <SelectItem value="NOT OK" className="text-red-600">NOT OK</SelectItem>
+                                      <SelectItem value="Needs Attention" className="text-yellow-600">Needs Attention</SelectItem>
+                                      <SelectItem value="Not Applicable" className="text-gray-600">Not Applicable</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Input
+                                    placeholder="Notes"
+                                    value={formData.inspectionData[key]?.notes || ''}
+                                    onChange={(e) => handleNotesChange(key, e.target.value)}
+                                    className="bg-white"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-sm space-y-4">
+              <Label htmlFor="image-upload" className="text-lg font-semibold text-gray-700">
+                Upload Images
+              </Label>
+              <div className="flex items-center space-x-2">
+                <Input
+                  id="image-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  onClick={() => document.getElementById('image-upload').click()}
+                  className="bg-blue-600 hover:bg-blue-700 text-white flex items-center space-x-2"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Add Photo</span>
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {formData.images.map((img, index) => (
+                  <div key={index} className="space-y-1">
+                    <img
+                      src={img.data}
+                      alt={`Inspection ${index + 1}`}
+                      className="w-full h-40 object-cover rounded-lg shadow-sm"
+                    />
+                    <p className="text-sm text-gray-500">{img.timestamp}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-sm">
+              <Label htmlFor="generalNotes" className="text-lg font-semibold text-gray-700">
+                General Notes
+              </Label>
+              <Input
+                id="generalNotes"
+                name="generalNotes"
+                value={formData.generalNotes}
+                onChange={handleChange}
+                className="mt-2"
+                placeholder="Add any general notes or observations"
+              />
+            </div>
+
+            <Button 
+              type="submit" 
+              className="w-full bg-green-600 hover:bg-green-700 text-white text-lg py-6"
+            >
+              <Clipboard className="w- h-5 mr-2" />
+              Submit Inspection
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 };
