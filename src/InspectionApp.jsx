@@ -35,7 +35,7 @@ const InspectionApp = () => {
       'FEEDER BELT': ['Belt_BC03', 'Chain_BZO3', 'Motor/Gearbox'],  
       'MAGNETIC SEPARATOR_MS01': ['Status'],
       'GREEN BELT': ['Belt_BC02', 'Chain_BZ02', 'Motor/Gearbox'],
-      'SULPHATE FILTER': ['Screw Conveyor_SC02', 'Purging', 'Motor/Gearbox_FN02.M1',],
+      'SULPHATE FILTER': ['Screw Conveyor_SC02', 'Purging', 'Motor/Gearbox_FN02.M1'],
       'LONG BELT': ['Belt_BC01', 'Chain_BZ01', 'Motor/Gearbox']
     },
     'Area  561 - Mill': {
@@ -65,10 +65,9 @@ const InspectionApp = () => {
         'CYCLONES',
         'SHENCK'
       ],
-      
       'BIG BAG FILTER_BF03': ['Purging', 'Motor/Gearbox_FN03.M1', 'Screw Conveyor_SC02', 'Rotary Feeder_RF02', 'Divertor Gate_DG01'],
-      'ELEVATOR FILTER_BF01': ['Rotary Feeder_RF01', 'Purging', 'Motor/Gearbox_FN01.M1',],
-      'SEPARATOR FILTER': ['Rotary Feeder_591 RF01', 'Purging', 'Motor/Gearbox_FN02.M1',]
+      'ELEVATOR FILTER_BF01': ['Rotary Feeder_RF01', 'Purging', 'Motor/Gearbox_FN01.M1'],
+      'SEPARATOR FILTER': ['Rotary Feeder_591 RF01', 'Purging', 'Motor/Gearbox_FN02.M1']
     },
     'Area 591 - Cement Silos': {
       'AIRSLIDES CONVEYORS': ['Status', 'BLowers'],
@@ -78,7 +77,7 @@ const InspectionApp = () => {
       'SILO 3_3S03': ['Filter', 'Level Sensors', 'Status'],
       'SILO 4_3S04': ['Filter', 'Level Sensors', 'Status'],
       'PURGE SIlo_3S05': ['Filter', 'Level Sensors', 'Status'],
-      'ELEVATOR_BE01': ['mMotor/Gearbox'],
+      'ELEVATOR_BE01': ['Motor/Gearbox'],
       'SILO FLUIDIZATION': ['Lump Crushers', 'Butterfly Valves']
     }
   };
@@ -87,7 +86,11 @@ const InspectionApp = () => {
     operatorName: '',
     shift: '',
     date: new Date().toISOString().split('T')[0],
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    time: new Date().toLocaleTimeString('en-US', { 
+      hour12: false, 
+      hour: '2-digit', 
+      minute: '2-digit'
+    }),
     inspectionData: Object.fromEntries(
       Object.entries(areas).flatMap(([area, equipment]) =>
         Object.entries(equipment).flatMap(([equip, items]) =>
@@ -107,6 +110,14 @@ const InspectionApp = () => {
     setFormData(prev => ({
       ...prev,
       [name]: value
+    }));
+  };
+
+  const handleTimeChange = (e) => {
+    const value = e.target.value;
+    setFormData(prev => ({
+      ...prev,
+      time: value
     }));
   };
 
@@ -154,12 +165,39 @@ const InspectionApp = () => {
     }
   };
 
+  const formatDataForSheets = (formData) => {
+    const rows = [];
+    
+    Object.entries(formData.inspectionData).forEach(([key, value]) => {
+      const [area, equipment, item] = key.split('-');
+      
+      rows.push({
+        operatorName: formData.operatorName,
+        shift: formData.shift,
+        date: formData.date,
+        time: formData.time,
+        area: area,
+        equipment: equipment,
+        item: item,
+        status: value.status,
+        notes: value.notes,
+        imageUrls: formData.images.map(img => img.data).join(', '),
+        generalNotes: formData.generalNotes
+      });
+    });
+  
+    return {
+      action: 'appendInspectionData',
+      data: rows
+    };
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
   
     try {
-      const formattedData = formatDataForSheets();
+      const formattedData = formatDataForSheets(formData);
       
       if (isOffline) {
         const pendingData = JSON.parse(localStorage.getItem('pendingInspections') || '[]');
@@ -169,30 +207,52 @@ const InspectionApp = () => {
         toast({
           title: "Saved Offline",
           description: "Inspection saved and will sync when online",
-          duration: 3000,
+          duration: 3000
         });
       } else {
-        const success = await window.submitToGoogleSheets(formattedData);
+        const response = await fetch('https://script.google.com/macros/s/AKfycbwn5kOrvRRBvx-7ZhyGj8Bo9XfIQAdHbOsHxuMkHBBx9nRVy6FHEgvflc6IplbSGWl1PA/exec', {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formattedData)
+        });
+  
+        const result = await response.json();
         
-        if (success) {
+        if (result.success) {
           toast({
             title: "Success",
             description: "Inspection data submitted successfully",
-            duration: 3000,
+            duration: 3000
           });
           
-          // Reset form
+          
           setFormData({
             operatorName: '',
             shift: '',
             date: new Date().toISOString().split('T')[0],
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            inspectionData: {},
+            time: new Date().toLocaleTimeString('en-US', { 
+              hour12: false, 
+              hour: '2-digit', 
+              minute: '2-digit'
+            }),
+            inspectionData: Object.fromEntries(
+              Object.entries(areas).flatMap(([area, equipment]) =>
+                Object.entries(equipment).flatMap(([equip, items]) =>
+                  items.map(item => [`${area}-${equip}-${item}`, {
+                    status: '',
+                    notes: ''
+                  }])
+                )
+              )
+            ),
             images: [],
             generalNotes: ''
           });
-          
-          localStorage.removeItem('currentInspection');
+        } else {
+          throw new Error(result.error || 'Failed to submit inspection');
         }
       }
     } catch (error) {
@@ -201,7 +261,7 @@ const InspectionApp = () => {
         title: "Error",
         description: "Failed to submit inspection. Data saved offline.",
         variant: "destructive",
-        duration: 5000,
+        duration: 5000
       });
     } finally {
       setIsSubmitting(false);
@@ -211,6 +271,27 @@ const InspectionApp = () => {
   const toggleArea = (area) => {
     setExpandedArea(expandedArea === area ? null : area);
   };
+
+ // First Change: Update the renderStatusSelect function here
+ const renderStatusSelect = (key, currentValue) => (
+  <Select
+    value={formData.inspectionData[key]?.status || ""}
+    onValueChange={(value) => handleStatusChange(key, value)}
+  >
+    <SelectTrigger className="w-full bg-white">
+      <SelectValue>
+        {formData.inspectionData[key]?.status || "Select status"}
+      </SelectValue>
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="OK">OK</SelectItem>
+      <SelectItem value="NOT OK">NOT OK</SelectItem>
+      <SelectItem value="Needs Attention">Needs Attention</SelectItem>
+      <SelectItem value="Not Applicable">Not Applicable</SelectItem>
+    </SelectContent>
+  </Select>
+);
+
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -223,7 +304,7 @@ const InspectionApp = () => {
                 alt="Company Logo" 
                 className="max-h-20 object-contain mb-4"
               />
-            ) : (
+            ) : ( 
               <div className="text-center mb-4">
                 <AlertCircle className="h-10 w-10 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-500">No logo configured</p>
@@ -253,24 +334,27 @@ const InspectionApp = () => {
               </div>
 
               <div className="grid md:grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="shift" className="text-sm font-medium text-gray-700">
-                    Shift
-                  </Label>
-                  <Select
-                    value={formData.shift}
-                    onValueChange={(value) => setFormData(prev => ({...prev, shift: value}))}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select Shift" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Morning">Morning</SelectItem>
-                      <SelectItem value="Afternoon">Afternoon</SelectItem>
-                      <SelectItem value="Night">Night</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              {/* Second Change: Replace the shift selector with this */}
+              <div>
+                <Label htmlFor="shift" className="text-sm font-medium text-gray-700">
+                  Shift
+                </Label>
+                <Select
+                  value={formData.shift}
+                  onValueChange={(value) => setFormData(prev => ({...prev, shift: value}))}
+                >
+                  <SelectTrigger className="mt-1 w-full">
+                    <SelectValue>
+                      {formData.shift || "Select shift"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Morning">Morning</SelectItem>
+                    <SelectItem value="Afternoon">Afternoon</SelectItem>
+                    <SelectItem value="Night">Night</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
                 
                 <div>
                   <Label htmlFor="date" className="text-sm font-medium text-gray-700">
